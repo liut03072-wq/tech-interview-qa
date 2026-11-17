@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>技术面试题库 · 点击展开答案</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --panel2: #1e2330;
+      --border: #2a3142;
+      --text: #e8eaed;
+      --muted: #9aa3b2;
+      --accent: #6ea8fe;
+      --ok: #3dd68c;
+      --warn: #f5a524;
+      --danger: #f87272;
+      --code: #12151c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    a { color: var(--accent); }
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: 100vh;
+    }
+    aside {
+      border-right: 1px solid var(--border);
+      background: var(--panel);
+      padding: 20px 14px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+    aside h1 {
+      font-size: 16px;
+      margin: 0 0 4px;
+      font-weight: 650;
+    }
+    aside .sub {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 16px;
+    }
+    .cat {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text);
+      padding: 9px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+    .cat:hover { background: var(--panel2); }
+    .cat.active {
+      background: var(--panel2);
+      border-color: var(--border);
+      color: var(--accent);
+    }
+    .cat span.count {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    main { padding: 24px 28px 80px; max-width: 920px; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+      align-items: center;
+    }
+    input[type="search"] {
+      flex: 1;
+      min-width: 220px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+    .chip {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .chip.on { color: var(--accent); border-color: #3b5bdb55; }
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+    .q {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .q-head {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 0;
+      color: var(--text);
+      padding: 14px 16px;
+      cursor: pointer;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: start;
+    }
+    .q-head:hover { background: #1a1f2a; }
+    .badge {
+      font-size: 11px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 6px;
+      white-space: nowrap;
+      margin-top: 2px;
+    }
+    .badge.deep { color: var(--warn); border-color: #7a5b20; }
+    .badge.mid { color: var(--accent); }
+    .badge.base { color: var(--ok); border-color: #245c40; }
+    .qid {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      margin-top: 2px;
+    }
+    .q-title { font-size: 15px; font-weight: 600; }
+    .chev {
+      color: var(--muted);
+      transition: transform .15s ease;
+      margin-top: 2px;
+    }
+    .q.open .chev { transform: rotate(90deg); }
+    .answer {
+      display: none;
+      border-top: 1px solid var(--border);
+      padding: 14px 16px 18px;
+      background: var(--panel2);
+      font-size: 14px;
+      color: #d5dae3;
+    }
+    .q.open .answer { display: block; }
+    .answer h4 {
+      margin: 14px 0 6px;
+      font-size: 13px;
+      color: var(--accent);
+      font-weight: 650;
+    }
+    .answer h4:first-child { margin-top: 0; }
+    .answer ul, .answer ol { padding-left: 1.2em; margin: 6px 0; }
+    .answer li { margin: 4px 0; }
+    .answer p { margin: 6px 0; }
+    .answer code, .q-title code {
+      font-family: ui-monospace, Consolas, monospace;
+      background: var(--code);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 0.92em;
+    }
+    .answer pre {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      overflow: auto;
+      font-size: 12.5px;
+      line-height: 1.5;
+    }
+    .answer .tip {
+      border-left: 3px solid var(--accent);
+      padding: 6px 10px;
+      margin: 10px 0;
+      background: #152033;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .answer .updated {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--ok);
+    }
+    .empty {
+      color: var(--muted);
+      padding: 40px 10px;
+      text-align: center;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .actions button {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .actions button.known { color: var(--ok); }
+    .actions button.later { color: var(--warn); }
+    footer.note {
+      margin-top: 28px;
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+    }
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; }
+      aside {
+        position: relative;
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside>
+      <h1>技术面试题库</h1>
+      <div class="sub">点击题目展开答案 · 支持深挖回填</div>
+      <div id="cats"></div>
+    </aside>
+    <main>
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="搜索题目 / 关键词 / 题号，如 RAG、GIL、kafka…" />
+        <button class="chip" id="filter-all" type="button">全部</button>
+        <button class="chip" id="filter-unknown" type="button">未掌握</button>
+        <button class="chip" id="filter-later" type="button">稍后复习</button>
+        <button class="chip" id="collapse-all" type="button">全部收起</button>
+      </div>
+      <div class="meta" id="meta"></div>
+      <div id="list"></div>
+      <footer class="note">
+        使用方式：先自己想答案，再点开对照。深挖某题后告诉我题号（如 <code>llm-012</code>），我会把补充同步进
+        <code>data.js</code> 的对应答案。<br />
+        本地标记保存在浏览器 localStorage，换电脑不会同步。
+      </footer>
+    </main>
+  </div>
+  <script src="./data.js"></script>
+  <script>
+    const state = {
+      cat: "all",
+      filter: "all",
+      q: "",
+      openId: null,
+    };
+
+    const storeKey = "interview-bank-v1";
+    function loadMarks() {
+      try { return JSON.parse(localStorage.getItem(storeKey) || "{}"); }
+      catch { return {}; }
+    }
+    function saveMarks(marks) {
+      localStorage.setItem(storeKey, JSON.stringify(marks));
+    }
+    let marks = loadMarks();
+
+    const catsEl = document.getElementById("cats");
+    const listEl = document.getElementById("list");
+    const metaEl = document.getElementById("meta");
+    const searchEl = document.getElementById("search");
+
+    function levelLabel(level) {
+      if (level === "deep") return ["深", "deep"];
+      if (level === "mid") return ["中", "mid"];
+      return ["基", "base"];
+    }
+
+    function renderCats() {
+      const counts = { all: BANK.length };
+      for (const c of CATEGORIES) counts[c.id] = BANK.filter(x => x.cat === c.id).length;
+      const items = [{ id: "all", name: "全部题目" }, ...CATEGORIES];
+      catsEl.innerHTML = items.map(c => `
+        <button class="cat ${state.cat === c.id ? "active" : ""}" data-cat="${c.id}">
+          <span>${c.name}</span>
+          <span class="count">${counts[c.id] || 0}</span>
+        </button>
+      `).join("");
+      catsEl.querySelectorAll(".cat").forEach(btn => {
+        btn.onclick = () => {
+          state.cat = btn.dataset.cat;
+          state.openId = null;
+          render();
+        };
+      });
+    }
+
+    function filtered() {
+      const qq = state.q.trim().toLowerCase();
+      return BANK.filter(item => {
+        if (state.cat !== "all" && item.cat !== state.cat) return false;
+        const m = marks[item.id] || {};
+        if (state.filter === "unknown" && m.known) return false;
+        if (state.filter === "later" && !m.later) return false;
+        if (!qq) return true;
+        const hay = (item.id + " " + item.title + " " + (item.tags || []).join(" ") + " " + item.answerText).toLowerCase();
+        return hay.includes(qq);
+      });
+    }
+
+    function renderList() {
+      const items = filtered();
+      metaEl.textContent = `当前 ${items.length} 题 · 分类「${state.cat}」 · 点题干展开/收起答案`;
+      if (!items.length) {
+        listEl.innerHTML = `<div class="empty">没有匹配题目。试试换分类或清空搜索。</div>`;
+        return;
+      }
+      listEl.innerHTML = items.map(item => {
+        const [lab, cls] = levelLabel(item.level);
+        const open = state.openId === item.id ? "open" : "";
+        const m = marks[item.id] || {};
+        return `
+          <article class="q ${open}" id="${item.id}">
+            <button class="q-head" type="button" data-id="${item.id}" aria-expanded="${!!open}">
+              <span class="badge ${cls}">${lab}</span>
+              <span>
+                <div class="q-title">${item.title}</div>
+                <div class="qid">${item.id} · ${(item.tags || []).join(" / ")}</div>
+              </span>
+              <span class="chev">▶</span>
+            </button>
+            <div class="answer">
+              ${item.answerHtml}
+              ${item.updatedAt ? `<div class="updated">已深挖更新：${item.updatedAt}</div>` : ""}
+              <div class="actions">
+                <button type="button" class="known" data-mark="known" data-id="${item.id}">${m.known ? "取消掌握" : "标记已掌握"}</button>
+                <button type="button" class="later" data-mark="later" data-id="${item.id}">${m.later ? "取消稍后" : "稍后复习"}</button>
+                <button type="button" data-copy="${item.id}">复制题号</button>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join("");
+
+      listEl.querySelectorAll(".q-head").forEach(btn => {
+        btn.onclick = () => {
+          const id = btn.dataset.id;
+          state.openId = state.openId === id ? null : id;
+          renderList();
+          if (state.openId) {
+            document.getElementById(state.openId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            history.replaceState(null, "", "#" + state.openId);
+          }
+        };
+      });
+      listEl.querySelectorAll("[data-mark]").forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          const key = btn.dataset.mark;
+          marks[id] = marks[id] || {};
+          marks[id][key] = !marks[id][key];
+          saveMarks(marks);
+          renderList();
+        };
+      });
+      listEl.querySelectorAll("[data-copy]").forEach(btn => {
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          await navigator.clipboard.writeText(btn.dataset.copy);
+          btn.textContent = "已复制";
+          setTimeout(() => (btn.textContent = "复制题号"), 1000);
+        };
+      });
+    }
+
+    function render() {
+      renderCats();
+      renderList();
+    }
+
+    searchEl.addEventListener("input", () => {
+      state.q = searchEl.value;
+      renderList();
+    });
+    document.getElementById("filter-all").onclick = () => { state.filter = "all"; syncChips(); renderList(); };
+    document.getElementById("filter-unknown").onclick = () => { state.filter = "unknown"; syncChips(); renderList(); };
+    document.getElementById("filter-later").onclick = () => { state.filter = "later"; syncChips(); renderList(); };
+    document.getElementById("collapse-all").onclick = () => { state.openId = null; renderList(); };
+
+    function syncChips() {
+      document.getElementById("filter-all").classList.toggle("on", state.filter === "all");
+      document.getElementById("filter-unknown").classList.toggle("on", state.filter === "unknown");
+      document.getElementById("filter-later").classList.toggle("on", state.filter === "later");
+    }
+    syncChips();
+
+    // deep link
+    if (location.hash) {
+      state.openId = location.hash.slice(1);
+      const hit = BANK.find(x => x.id === state.openId);
+      if (hit) state.cat = hit.cat;
+    }
+    render();
+  </script>
+</body>
+</html>
