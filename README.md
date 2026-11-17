@@ -1,8 +1,15 @@
 # 技术面试题库（点击展开答案）
 
+## 手机 / 在线访问
+
+- 页面地址：https://liut03072-wq.github.io/tech-interview-qa/
+- 仓库地址：https://github.com/liut03072-wq/tech-interview-qa
+
+首次开通 Pages 后可能要等 1–3 分钟才能打开；打不开就稍后再刷新。
+
 ## 怎么用
 
-1. 用浏览器打开 `index.html`（双击或 Cursor 里 Open with Live Server / 简单静态服务均可）。
+1. 手机或电脑浏览器打开上面的页面地址；本地也可直接打开 `index.html`。
 2. 左侧选分类，或顶部搜索关键词、题号（如 `llm-003`、`GIL`）。
 3. **先自己想**，再点击题干展开答案。
 4. 可标记「已掌握 / 稍后复习」（存在本机浏览器）。
