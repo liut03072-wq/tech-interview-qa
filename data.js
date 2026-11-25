@@ -678,28 +678,113 @@ DNS 找 IP → TCP 握手 →（HTTPS 再 TLS）→ 发送 HTTP 请求 → 收�
         <li><b>3</b>：基于 QUIC（底下用 UDP），减轻队头阻塞，连接迁移，握手往往更快。</li>
       </ul>
       <div class="tip">面试一句：HTTP 是应用层约定；TCP/UDP 是传输层运字节。HTTP 内容会封装进 TCP（或 HTTP3 的 QUIC/UDP）再发出去，不是三套互不相关的「传不同货物」。</div>
+
+      <h4>深挖补充：分层图 和 「DNS→TCP→HTTP」时间线为啥看起来顺序不一样？</h4>
+      <p>因为它们根本不是同一种「顺序」：</p>
+      <ul>
+        <li><b>分层图（HTTP→TCP→IP）</b>：说的是<strong>封装结构</strong>——一份要发出去的数据，外套怎么一层层穿上。像信封：信纸（HTTP）装进信封运输方式（TCP）再写收件地址（IP）。这是「从上到下怎么打包」，不是时间轴。</li>
+        <li><b>访问流程（DNS→TCP→TLS→HTTP）</b>：说的是<strong>时间先后</strong>——你打开网页时，先干什么、后干什么。要先知道去哪（DNS），再接通（TCP/TLS），最后才说业务话（HTTP）。</li>
+      </ul>
+      <pre>时间线（先后发生）
+1 DNS：example.com → 1.2.3.4
+2 TCP 握手：和 1.2.3.4:443 接通
+3 TLS：加密通道建好
+4 这时才发 HTTP 请求（GET / …）
+5 收到 HTTP 响应
+
+而「第 4 步发出去的那一个 HTTP 请求」在电线上的形态是：
+[ IP 头 [ TCP 头 [ TLS记录 [ HTTP报文 ] ] ] ]
+也就是分层图里的「HTTP 装进 TCP，再进 IP」</pre>
+      <p>所以：分层图解释「一个包长什么样」；时间线解释「整次访问的步骤」。DNS 也不属于「HTTP 装进 TCP」那条封装链的上一层，它是开始前另做的一次查询（本身也常走 UDP/TCP）。</p>
     `,
   },
   {
     id: "osnet-006",
     cat: "osnet",
     level: "deep",
-    tags: ["IO模型", "select", "epoll"],
+    tags: ["IO模型", "select", "epoll", "多路复用", "事件循环"],
     title: "阻塞 IO、非阻塞 IO、IO 多路复用、epoll 边缘触发/水平触发怎么理解？",
-    answerText: "阻塞IO 非阻塞 select epoll ET LT",
+    answerText: "epoll 是什么 阻塞IO 非阻塞 多路复用 select 事件循环 Nginx 餐厅服务员 LT ET",
+    updatedAt: "2026-11-25",
     answerHtml: `
-      <h4>模型直觉</h4>
+      <h4>epoll 是什么？（一句话）</h4>
+      <p><b>epoll</b> 是 Linux 提供的一种 <b>I/O 多路复用</b> 机制：让<strong>少量线程</strong>同时盯着<strong>很多连接（fd）</strong>，哪个可读/可写了再处理哪个，而不用「一个连接一个阻塞线程死等」。</p>
+
+      <h4>为什么需要它？</h4>
+      <pre>笨办法：1 万个客户端连接 = 开 1 万个线程，每个阻塞在 read 上
+→ 线程太多，内存和切换成本爆炸
+
+epoll 办法：1 个（或几个）线程
+→ 向内核登记「帮我看这些连接」
+→ 内核说「3、7、99 号有数据了」
+→ 只处理这几个，其余继续等</pre>
+      <p>餐厅类比：不是每桌雇一个服务员站着等，而是<strong>一个服务员拿小本盯很多桌</strong>，哪桌菜好了/客人招手就过去——这就是多路复用；Linux 上高效实现之一就是 epoll。</p>
+
+      <h4>和阻塞 / 非阻塞的关系</h4>
       <ul>
-        <li><b>阻塞</b>：调用直到数据就绪才返回，线程被卡住。</li>
-        <li><b>非阻塞</b>：立即返回 EAGAIN；需要轮询或配合多路复用。</li>
-        <li><b>IO 多路复用</b>：一个线程盯多个 fd（select/poll/epoll），谁就绪处理谁。</li>
+        <li><b>阻塞</b>：没数据，线程睡在这一次 read 上，干不了别的连接。</li>
+        <li><b>非阻塞</b>：没数据立刻返回「没有」；若自己空转轮询所有连接，也浪费 CPU。</li>
+        <li><b>epoll</b>：把「谁就绪了」交给内核通知你，再去非阻塞读写就绪的那些。常和事件循环一起用（Nginx、Redis，以及很多异步框架的底层思想）。</li>
       </ul>
-      <h4>epoll</h4>
+      <pre>典型用法（概念）
+1) epoll_create：创建一个 epoll 实例
+2) epoll_ctl：把 socket fd 加进去（或删除/修改）
+3) epoll_wait：阻塞等待「有事件的 fd 列表」
+4) 对返回的 fd 做 accept/read/write
+5) 再回到 epoll_wait</pre>
+
+      <h4>比 select 好在哪？（了解即可）</h4>
       <ul>
-        <li><b>LT 水平触发</b>：缓冲区还有数据就会反复通知；编程简单，易漏处理导致反复唤醒。</li>
-        <li><b>ET 边缘触发</b>：状态变化通知一次；必须一次读到 EAGAIN，否则漏数据；高效但更易写错。</li>
+        <li>select 每次都要交一大堆 fd 给内核扫，连接特别多时慢。</li>
+        <li>epoll 用「登记 + 就绪列表」的思路，海量连接时更合适（所以高并发服务器常提它）。</li>
       </ul>
-      <p>Nginx、Redis（多路复用）、高性能网关都建立在这套模型上。</p>
+
+      <h4>LT / ET（先混个眼熟）</h4>
+      <ul>
+        <li><b>LT 水平触发</b>：只要缓冲区里还有数据，就会反复通知；好写，漏处理可能被反复唤醒。</li>
+        <li><b>ET 边缘触发</b>：状态变化时通知一次；必须一次尽量读完，否则可能漏；更高效但更易写错。</li>
+      </ul>
+      <p>Nginx、Redis 等高性能网络程序都建立在「多路复用 + 事件驱动」这套模型上；epoll 是 Linux 上的主角之一。</p>
+      <div class="tip">和 Python asyncio：事件循环「await 时去干别的」的底层，在 Linux 上常常就是这类多路复用（具体实现因库而异）。你先记住角色：epoll = 内核帮你盯很多连接的门铃系统。</div>
+
+      <h4>深挖补充：用你的话核对</h4>
+      <ul>
+        <li><b>阻塞 ≈ 一对一，且要等有结果才返回</b>：对。一次 read 盯一个连接；没数据就卡住，直到有数据或出错。</li>
+        <li><b>非阻塞 ≈ 一对一，但马上返回</b>：对。还是针对某一个 fd；没数据立刻说「没有」（EAGAIN），有数据就返回数据。不会在这次调用里睡死。</li>
+        <li><b>epoll ≈ 一对多</b>：对。一次 epoll_wait 帮你盯很多连接；更准确的说法是：<strong>返回「当前就绪的那一批」</strong>（可能多个同时就绪），不是业务请求本身「谁返回就返回谁」那么口语化，而是「门铃响了，给你名单」。</li>
+      </ul>
+      <p>实战里常组合：连接设成非阻塞 + epoll 盯一堆连接；epoll 告诉你谁就绪了，你再去非阻塞 read/write。</p>
+
+      <h4>深挖补充：三种分别用在什么场景？要手写 epoll 吗？</h4>
+      <p><b>不用每次写业务都手写 epoll。</b>多数时候框架/服务器已经用好多路复用了，你写的是业务逻辑。</p>
+      <ul>
+        <li><b>阻塞（最常用在应用代码里）</b>
+          <ul>
+            <li>适合：逻辑简单、连接少、脚本/工具、一次性任务。</li>
+            <li>例子：写个爬虫脚本 <code>requests.get</code> 一个个抓；脚本读本地文件；管理命令连一次数据库查完就退出；内部小工具 QPS 很低。</li>
+            <li>为什么行：连接少时「一个请求等一会儿」完全可接受，代码最好写。</li>
+          </ul>
+        </li>
+        <li><b>非阻塞（单独用得少，常当积木）</b>
+          <ul>
+            <li>适合：你需要「问一下有没有，没有就先干别的」，或给事件循环用。</li>
+            <li>例子：自己实现简单客户端时探测 socket；或框架内部把 fd 设成非阻塞再交给 epoll/事件循环。</li>
+            <li>注意：业务里如果只非阻塞、又自己 for 循环狂问所有连接，会空转吃 CPU——所以通常要配 epoll/asyncio，而不是裸非阻塞硬轮询。</li>
+          </ul>
+        </li>
+        <li><b>epoll / 事件驱动（高并发基础设施）</b>
+          <ul>
+            <li>适合：一台机器要同时挂大量连接、高并发网络服务。</li>
+            <li>例子：Nginx 反代上万连接；Redis 处理很多客户端；游戏网关；你自己用 FastAPI/uvicorn、Node、Go net/http 跑高并发 API——<strong>底层往往是 epoll（Linux），但你几乎不直接调用</strong>。</li>
+            <li>你写 Python 业务：用 <code>asyncio</code> / FastAPI，等于站在事件循环上；轮到框架去用多路复用。</li>
+          </ul>
+        </li>
+      </ul>
+      <pre>怎么选（实用）
+- 脚本、管理工具、连接很少 → 阻塞就行
+- 要高并发、大量同时在线连接 → 用异步框架/成熟服务器（它们内部用 epoll）
+- 只有当你写底层网络库、自研网关时 → 才可能直接碰 epoll</pre>
+      <div class="tip">面试可以说：阻塞适合简单低并发；高并发用事件驱动（epoll）；业务开发优先框架，而不是手写 epoll。</div>
     `,
   },
   {
@@ -788,20 +873,38 @@ Nginx 再转发到 127.0.0.1:8000（本机应用）
     cat: "osnet",
     level: "deep",
     tags: ["锁", "互斥", "死锁", "临界区", "竞态"],
-    title: "互斥锁、读写锁、自旋锁怎么选？死锁四个必要条件？",
-    answerText: "锁 临界区 竞态 互斥锁 读写锁 自旋锁 死锁 入门",
-    updatedAt: "2026-11-18",
+    title: "什么是临界区？互斥锁、自旋锁、读写锁怎么选？",
+    answerText: "临界区 竞态 互斥锁 自旋锁 读写锁 死锁 场景选型 入门",
+    updatedAt: "2026-11-25",
     answerHtml: `
-      <h4>先懂：为什么要锁</h4>
-      <p>多执行流同时改共享数据时，读改写可能交错，产生<strong>竞态条件</strong>，结果错误且难复现。锁用来保护<strong>临界区</strong>（那段必须互斥执行的代码）。</p>
-      <p>没有锁 → 数据可能错、结构可能坏。锁用错 → 死锁或性能很差。总览里的例子见 <code>osnet-000</code>。</p>
+      <h4>临界区是什么</h4>
+      <p><b>临界区</b>：访问共享资源时，那段「同一时刻只允许一个（写）执行流进来」的代码。锁的作用就是把这段代码包起来。</p>
+      <pre>共享余额 balance = 100
+线程A：读100 → +50 → 写回
+线程B：读100 → +30 → 写回
+不加锁可能最终变成 130 或 150（丢更新）——「读改写」这几行就是临界区。</pre>
+      <p>没有锁 → 竞态、脏数据。锁太大/乱用 → 变慢甚至死锁。总览例子见 <code>osnet-000</code>。</p>
+
+      <h4>三种锁：区别与场景</h4>
       <ul>
-        <li><b>互斥锁</b>：临界区较长、拿不到锁就睡眠 → 适合一般互斥。</li>
-        <li><b>自旋锁</b>：临界区极短，忙等避免睡眠唤醒开销；多核短临界区；乱自旋浪费 CPU。</li>
-        <li><b>读写锁</b>：读多写少；写独占，读可并发。</li>
+        <li><b>互斥锁（mutex）</b>：同一时刻只一人进临界区；拿不到就<strong>睡眠等唤醒</strong>。<br>
+          场景：一般业务互斥、临界区可能稍长（几微秒以上、可能含一点逻辑）。<br>
+          例子：多线程改同一份字典/计数器；Python <code>threading.Lock</code>；数据库连接池里借还连接。</li>
+        <li><b>自旋锁（spinlock）</b>：拿不到就<strong>原地空转忙等</strong>，不睡眠。<br>
+          场景：临界区<strong>极短</strong>（几条指令级）、多核、等太久不划算睡眠唤醒。<br>
+          例子：内核里保护短数据结构；驱动/底层库。业务代码几乎不手写；乱自旋会空转烧 CPU。</li>
+        <li><b>读写锁（rwlock）</b>：多个读者可同时进；写者独占（与读、与写都互斥）。<br>
+          场景：<strong>读多写少</strong> 的共享数据。<br>
+          例子：配置缓存几乎只读、偶发热更新；路由表/权限表查询远多于改写。</li>
       </ul>
-      <h4>死锁四条件</h4>
-      <p>互斥、占有且等待、不可抢占、循环等待。破任一条件即可（锁顺序、超时、尝试锁、资源分级）。</p>
+      <pre>选型直觉
+改同一份数据、一般业务     → 互斥锁（默认首选）
+读远多于写、想读并发       → 读写锁
+临界区极短、底层/内核多核   → 自旋锁（业务别乱用）</pre>
+      <div class="tip">日常 Python/Web：多用互斥锁或队列；读写锁偶尔；自旋锁留给内核/底层，别每次都自己拧。</div>
+
+      <h4>死锁四条件（破任一即可）</h4>
+      <p>互斥、占有且等待、不可抢占、循环等待。破法：统一加锁顺序、超时/尝试锁、资源分级、缩小临界区。</p>
     `,
   },
 
@@ -810,35 +913,123 @@ Nginx 再转发到 127.0.0.1:8000（本机应用）
     id: "py-001",
     cat: "python",
     level: "deep",
-    tags: ["GIL"],
-    title: "CPython 的 GIL 是什么？对多线程/多进程/asyncio 意味着什么？",
-    answerText: "GIL 多线程 多进程 asyncio",
+    tags: ["GIL", "CPU密集", "IO密集"],
+    title: "什么是 CPU 密集 / IO 密集？GIL 对多线程意味着什么？",
+    answerText: "GIL CPU密集 IO密集 多线程 多进程 asyncio 单核 多核 真并行 时间片 Java 核 场景选型",
+    updatedAt: "2026-11-25",
     answerHtml: `
-      <h4>GIL</h4>
-      <p>Global Interpreter Lock：同一时刻通常只有一个线程在执行 Python 字节码，用于简化内存管理（引用计数）与 C 扩展安全。</p>
-      <h4>含义</h4>
+      <h4>先分清：程序在「忙算」还是「干等」</h4>
       <ul>
-        <li><b>CPU 密集</b>：多线程几乎无法用多核 → 用 <code>multiprocessing</code> / 进程池，或写 C/Rust 扩展，或换解释器思路。</li>
-        <li><b>IO 密集</b>：线程在 IO 等待时会释放 GIL，多线程仍有用。</li>
-        <li><b>asyncio</b>：单线程协作式并发，靠事件循环在 await 点切换；不靠多核算力，而靠减少等待浪费。</li>
+        <li><b>CPU 密集</b>：时间主要花在 <strong>CPU 算</strong>——加减乘除、循环、加密、图像处理、大量正则/JSON 解析。<br>
+          特征：任务跑着时 CPU 占用很高；加机器核数才可能更快。<br>
+          例子：压缩大文件、本地算特征值、百万行纯 Python 循环统计。</li>
+        <li><b>IO 密集</b>：时间主要花在 <strong>等外设/网络/磁盘/别人的服务</strong>——本地 CPU 经常闲着。<br>
+          特征：任务慢，但本地 CPU 并不满；瓶颈是「等回复 / 等读写」。<br>
+          例子：爬网页、调 LLM API、读大文件、查数据库、下载上传。</li>
       </ul>
-      <div class="tip">爬虫/调 LLM API 多为 IO 密集：线程池或 asyncio 都行；向量计算/大量正则 CPU 忙时别指望多线程提速。</div>
+      <p><b>「密集」不是说干等很热闹</b>：英文 I/O-intensive / CPU-intensive，指<strong>这类工作里时间主要被哪一类占满</strong>——算力占满叫 CPU 密集，等待/读写占满叫 IO 密集。不是「一堆人排队等」才叫密集；一个请求干等 2 秒，对你这边也算 IO 密集。</p>
+      <p>也不是程序一辈子非此即彼：同一程序可以先爬网页（IO）再本地重算（CPU）。分类是<strong>瓶颈诊断</strong>——这段时间主要费在「干等」还是「本地猛算」。</p>
+      <pre>同一个「慢」完全不同：
+CPU 密集：不停写作业（本地手忙）
+IO 密集：等快递 / 等对面算完再回（本地干等）
+
+发 HTTP 请求时：对面服务器可能在忙它的 CPU；
+你这边多半在等网络返回——对你的程序分类，仍是 IO 密集。</pre>
+      <div class="tip">爬虫/调模型接口大多是 IO 密集；本地重计算才更像 CPU 密集。两边都有时，看<strong>谁占你总时间更长</strong>。</div>
+
+      <h4>核是什么</h4>
+      <p><b>一个核 ≈ 一个能真正同时干活的人</b>（CPU 执行单元）。线程/进程是任务单；核才是现场干活的人。</p>
+      <ul>
+        <li>1 核：再开再多线程，也是这一个人来回换活（时间片轮转）。</li>
+        <li>4 核：大约最多 4 份活可以<strong>真的同时</strong>推进。</li>
+      </ul>
+
+      <h4>真并行 vs 来回切；单核还要不要多线程</h4>
+      <pre>单核：只能时间片轮转（来回切），Java / Python 都一样
+多核：可以多个线程同时跑在不同核 = 真并行
+
+单核 + CPU 密集：多线程往往不如单线程（算力就一人，还付切换/抢锁开销）
+单核 + IO 密集：多线程或 asyncio 仍有用（A 在等时推进 B，重叠等待）
+多核 + CPython 纯 Python CPU：即使有多核，GIL 让同一时刻只有一个线程执行字节码 → 算力近乎串行
+多核 + Python 多进程 / Java 多线程：可以真并行</pre>
+
+      <h4>GIL 是什么（CPython）</h4>
+      <p><b>GIL</b>（Global Interpreter Lock，全局解释器锁）：CPython 解释器内部的一把<strong>全局大锁</strong>。线程要执行 Python 字节码，先得拿到这把锁；所以<strong>同一时刻通常只有一个线程在跑 Python 字节码</strong>。线程可以建很多，但真正「解释执行」时像排队用一把钥匙。</p>
+      <p>为什么要它：CPython 用引用计数管对象内存，解释器内部还有很多共享结构；多线程若同时改这些，会乱。GIL 用「一把大锁」把解释器执行简化成互斥，实现简单、C 扩展也好写。副作用：多线程几乎<strong>抢不到多核算力</strong>。</p>
+      <p><b>和「同进程线程共享内存」的关系</b>：</p>
+      <ul>
+        <li>线程共享进程内存 → 所以能方便改同一份 Python 对象；也因此才需要同步（你自己的锁、以及解释器的 GIL）。</li>
+        <li>GIL <strong>不是</strong>「因为共享内存所以必须只有一个线程跑」的操作系统规定；是 <strong>CPython 实现选择</strong>。共享内存是背景；GIL 是解释器给自己上的全局互斥。</li>
+        <li>有 GIL ≠ 你的业务数据自动安全：GIL 保护的是解释器内部一致性；复合操作（先读后写）中间仍可能切换线程，业务临界区仍要自己加锁。见 <code>osnet-008</code>。</li>
+      </ul>
+      <h4>案例：多线程碰同一份数据（业务仍要自己加锁）</h4>
+      <pre>balance = 0
+def deposit():
+    global balance
+    for _ in range(100000):
+        balance += 1   # 读-加-写，不是原子的
+
+# 两个线程各加 10 万，期望 200000；不加锁常得到更小的数
+# threading.Thread 跑两次 deposit 即可复现</pre>
+      <p>GIL 保证「执行一条字节码时解释器内部别乱」；但 <code>+=</code> 往往对应多条字节码，线程可在中间被切换 → 仍会丢更新。业务互斥用 <code>threading.Lock</code>。</p>
+      <pre>GIL 管啥：解释器内部（对象头/引用计数等）别被多线程同时改坏
+你的锁管啥：你的业务临界区（余额、字典结构等）别竞态
+
+多进程：每个进程各自一份解释器 → 各自一把 GIL（能真多核；代价是内存各一份、IPC 序列化/拷贝，不只是「内存来回切」）
+Java：主流实现没有 GIL；多线程在多核上可真并行跑字节码</pre>
+
+      <h4>和两种密集任务怎么对上；和 Java 比弱在哪</h4>
+      <ul>
+        <li><b>CPU 密集 + 多线程</b>：大家抢同一把 GIL，几乎无法用满多核 → 多线程<strong>提速有限甚至更慢</strong>。<br>
+          怎么办：用 <code>multiprocessing</code> / 进程池（每进程自己一把 GIL）、或把重活丢给 C/numpy 等释放 GIL 的库。</li>
+        <li><b>IO 密集 + 多线程</b>：线程卡在等网络/磁盘时会<strong>放下 GIL</strong>，别的线程可以接着跑 → 多线程仍然有用（用等待时间干别的活）。</li>
+        <li><b>asyncio</b>：通常单线程 + 事件循环；在 <code>await</code> 等 IO 时切换去做别的协程。不靠多核算力，靠<strong>少干等</strong>。适合大量并发网络请求（同样偏 IO 密集）。</li>
+        <li><b>vs Java</b>：只在「同进程多线程吃多核算力」上 CPython 更弱；不是 Python 全面弱。IO 多、调库多仍很常见；硬算靠多进程或底层库。</li>
+      </ul>
+      <pre>选型直觉（和 py-002 一致）
+爬虫 / 调 API / 等数据库     → 线程池或 asyncio（IO 密集）
+纯 Python 重计算占满 CPU   → 进程池 / 多进程（CPU 密集）
+同进程多线程砸满多核 CPU   → Java 更顺；CPython 别指望普通 threading
+别指望：CPU 密集任务靠多线程在 CPython 里吃满 8 核</pre>
     `,
   },
   {
     id: "py-002",
     cat: "python",
     level: "mid",
-    tags: ["多线程", "多进程"],
-    title: "什么时候用 threading，什么时候用 multiprocessing？",
-    answerText: "threading multiprocessing 选择",
+    tags: ["线程池", "进程池", "协程", "多线程", "多进程", "asyncio", "IO密集", "CPU密集"],
+    title: "线程池、进程池、协程分别是什么？怎么选？",
+    answerText: "线程池 进程池 协程 threading multiprocessing asyncio 单核 多核 IO密集 CPU密集 选型",
+    updatedAt: "2026-11-25",
     answerHtml: `
+      <h4>三个概念（先分清「工人编制」和「调度方式」）</h4>
       <ul>
-        <li><b>threading</b>：IO 等待多（网络、磁盘、数据库）；共享内存方便；受 GIL 限制算力。</li>
-        <li><b>multiprocessing</b>：CPU 密集；真多核；进程间用 Queue/Pipe/Manager，序列化有成本；内存占用更高。</li>
+        <li><b>线程池</b>：预先（或按需）养一撮<strong>线程</strong>工人，任务来了丢进去跑，跑完线程回收再利用——避免反复创建/销毁线程。<br>
+          API：<code>concurrent.futures.ThreadPoolExecutor</code>。底层仍是多线程，受 GIL 限制算力。详见 <code>py-001</code>。</li>
+        <li><b>进程池</b>：养一撮<strong>进程</strong>工人，任务丢进去；每进程自己一把 GIL，能真吃多核。<br>
+          API：<code>ProcessPoolExecutor</code> / <code>multiprocessing.Pool</code>。代价：内存更重、参数/结果要序列化。</li>
+        <li><b>协程</b>：在<strong>通常一个线程</strong>里，靠事件循环在 <code>await</code> 点协作切换——不是 OS 级线程切换。<br>
+          API：<code>asyncio</code>（<code>async def</code> / <code>await</code>）。细节见 <code>py-003</code>。极轻量，适合海量并发「等」。</li>
       </ul>
-      <p>实务：先测瓶颈。很多「慢」其实是等网络，上进程池只会更重。</p>
-      <pre>from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor</pre>
+      <pre>类比
+线程池：雇 20 个服务员，谁闲谁接下桌（适合一桌桌等上菜 = IO）
+进程池：开 4 个独立厨房同时炒菜（适合猛算 = CPU）
+协程：1 个服务员记很多桌的单，上菜间隙去问下一桌（一个人伺候很多等待）</pre>
+
+      <h4>使用场景怎么选</h4>
+      <pre>大量等网络/API/DB，连接数很多     → 协程（asyncio）优先；或线程池
+有现成同步库（requests 等）不好改异步 → 线程池包一层
+纯 Python 重计算、要吃满多核         → 进程池
+单核 + CPU 密集                       → 别折腾池子，单线程算完往往更好
+单核 + IO 密集                         → 线程池或协程仍有用（重叠等待）</pre>
+      <ul>
+        <li><b>线程池</b>：IO 密集；共享内存方便；代码像普通函数，迁移成本低。</li>
+        <li><b>进程池</b>：CPU 密集；任务尽量独立、数据别太大（序列化贵）。</li>
+        <li><b>协程</b>：高并发 IO（上千连接）；必须用异步库，<code>async</code> 里不能乱调阻塞函数（会卡住整个循环）。</li>
+      </ul>
+      <div class="tip">三者可组合：asyncio 里把阻塞调用丢线程池；CPU 重活丢进程池。先分清瓶颈是「等」还是「算」，再选池子。</div>
+      <pre>from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+import asyncio</pre>
     `,
   },
   {
